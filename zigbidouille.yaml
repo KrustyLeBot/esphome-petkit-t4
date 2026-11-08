@@ -132,7 +132,7 @@ number:
     step: 1
     optimistic: yes
     restore_value: yes
-    initial_value: 0
+    initial_value: 5  # stock "avoid repeated cleanings": 5 min
 
 text:
   - platform: template
@@ -166,7 +166,7 @@ text:
     max_length: 35  # six "HH:MM" separated by commas, as the stock app allows
     optimistic: yes
     restore_value: yes
-    initial_value: ''
+    initial_value: '07:00,10:00,13:00,16:00,19:00,21:00'  # stock periodic deodorizing
 
 
 
