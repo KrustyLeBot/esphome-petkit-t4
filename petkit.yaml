@@ -11,6 +11,11 @@ esphome:
     version: 0.12.0
   platformio_options:
     board_upload.maximum_size: 0x800000
+  includes:
+    - zigbidouille.h
+
+packages:  # Homey API, two pets, quiet hours: see the file
+  zigbidouille: !include zigbidouille.yaml
 
 external_components:
   - source: ./components
@@ -114,8 +119,13 @@ time:
   - platform: bm8563
     update_interval: never
 
-  - platform: homeassistant
+  # Zigbidouille: the time comes from the LAN (the Freebox), not Home Assistant, so the box keeps a
+  # correct clock with no HA and no internet. The id stays ha_time: the rest of the config uses it.
+  - platform: sntp
     id: ha_time
+    timezone: ${timezone}
+    servers:
+      - ${ntp_server}
     on_time_sync:
       bm8563.write_time:
 
@@ -129,6 +139,9 @@ substitutions:
   # Any move is forbidden during an OTA or with Block Movement on. Read the states directly: the
   # Movement Blocked sensor may not be refreshed yet when Block Movement's own triggers run.
   movement_blocked: 'id(ota_state) || id(block_movement).state'
+  # Zigbidouille: local clock source and zone (quiet hours and "today" counters use local time).
+  timezone: Europe/Paris
+  ntp_server: 192.168.1.254
 
 qr_code:
   id: qrcode_ap
@@ -855,8 +868,10 @@ binary_sensor:
       - globals.set:
           id: visit_started_at
           value: !lambda return millis();
+      - lambda: id(visit_samples).clear();  # zigbidouille.yaml: weight samples of this visit
       - script.execute: emergency_stop
     on_release:
+      - script.execute: record_visit  # zigbidouille.yaml: which pet, how heavy, how long
       - if:
           all:
             - switch.is_on: clean_every_visit
@@ -1548,6 +1563,12 @@ script:
     mode: restart
     then:
       - delay: !lambda return id(clean_after).state*60000;
+      - wait_until:  # zigbidouille.yaml: not during quiet hours, nor sooner than Min Clean Interval after the last cleaning
+          lambda: |-
+            if (id(in_quiet_hours).state) return false;
+            const uint32_t min_ms = (uint32_t) id(min_clean_interval).state * 60000;
+            if (min_ms && id(cleaned_at) && millis() - (uint32_t) id(cleaned_at) < min_ms) return false;
+            return true;
       - wait_until:  # don't drop the clean if a pet is still around when the delay ends
           all:
             - binary_sensor.is_off: approach

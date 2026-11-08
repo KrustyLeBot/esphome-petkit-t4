@@ -1,0 +1,318 @@
+# Zigbidouille additions to the Petkit T4 firmware, kept in their own package so the main
+# petkit.yaml stays close to upstream (Triskae/egormanga) and their fixes merge cleanly.
+#
+# - A web API for Homey (app/drivers/petkit-t4 in KrustyLeBot/ZigbidouilleHomeyApp): REST + an
+#   event stream (/events), behind a login. Also the device's own status/control page.
+# - Two pets told apart by weight ranges, with the last visit and per-pet counters.
+# - Quiet hours and a minimum interval between two automatic cleanings.
+#
+# Everything here runs on the litter box itself: Homey only reads it and changes settings, so the
+# box keeps cleaning, identifying the pets and honouring quiet hours while Homey is down.
+#
+# Entity NAMES are the API: the web server addresses entities by name
+# (POST /switch/Auto Clean/turn_on). Renaming one breaks the Homey driver — change both together.
+
+web_server:
+  port: 80
+  version: 3
+  local: true  # serve the page's JS from the device: it must work with the internet blocked
+  ota: false   # firmware updates go through the password-protected native OTA only
+  auth:
+    username: !secret web_username
+    password: !secret web_password
+    type: basic
+
+globals:
+  - id: visit_samples  # pet weight samples of the visit in progress
+    type: std::vector<float>
+
+  - id: visits_day  # local day-of-year the per-pet counters belong to
+    type: int
+    restore_value: yes
+
+  - id: pet1_visits
+    type: int
+    restore_value: yes
+
+  - id: pet2_visits
+    type: int
+    restore_value: yes
+
+  - id: unknown_visits
+    type: int
+    restore_value: yes
+
+  - id: visit_total
+    type: int
+    restore_value: yes
+
+number:
+  # Defaults: Zeus ~4.3 kg, Ares ~5.0 kg, split halfway. Tune from Homey once real weights show up.
+  - platform: template
+    id: pet1_min
+    name: Pet 1 Min Weight
+    icon: mdi:weight-kilogram
+    entity_category: config
+    unit_of_measurement: kg
+    mode: box
+    min_value: 0.5
+    max_value: 15
+    step: 0.05
+    optimistic: yes
+    restore_value: yes
+    initial_value: 3.5
+
+  - platform: template
+    id: pet1_max
+    name: Pet 1 Max Weight
+    icon: mdi:weight-kilogram
+    entity_category: config
+    unit_of_measurement: kg
+    mode: box
+    min_value: 0.5
+    max_value: 15
+    step: 0.05
+    optimistic: yes
+    restore_value: yes
+    initial_value: 4.65
+
+  - platform: template
+    id: pet2_min
+    name: Pet 2 Min Weight
+    icon: mdi:weight-kilogram
+    entity_category: config
+    unit_of_measurement: kg
+    mode: box
+    min_value: 0.5
+    max_value: 15
+    step: 0.05
+    optimistic: yes
+    restore_value: yes
+    initial_value: 4.65
+
+  - platform: template
+    id: pet2_max
+    name: Pet 2 Max Weight
+    icon: mdi:weight-kilogram
+    entity_category: config
+    unit_of_measurement: kg
+    mode: box
+    min_value: 0.5
+    max_value: 15
+    step: 0.05
+    optimistic: yes
+    restore_value: yes
+    initial_value: 6.0
+
+  - platform: template
+    id: min_clean_interval
+    name: Min Clean Interval
+    icon: mdi:timer-sand
+    entity_category: config
+    unit_of_measurement: min
+    mode: box
+    min_value: 0
+    max_value: 240
+    step: 1
+    optimistic: yes
+    restore_value: yes
+    initial_value: 0
+
+text:
+  - platform: template
+    id: pet1_name
+    name: Pet 1 Name
+    icon: mdi:cat
+    entity_category: config
+    mode: text
+    max_length: 16
+    optimistic: yes
+    restore_value: yes
+    initial_value: Zeus
+
+  - platform: template
+    id: pet2_name
+    name: Pet 2 Name
+    icon: mdi:cat
+    entity_category: config
+    mode: text
+    max_length: 16
+    optimistic: yes
+    restore_value: yes
+    initial_value: Ares
+
+  - platform: template
+    id: quiet_start
+    name: Quiet Hours Start
+    icon: mdi:sleep
+    entity_category: config
+    mode: text
+    max_length: 5
+    pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+    optimistic: yes
+    restore_value: yes
+    initial_value: '22:00'
+
+  - platform: template
+    id: quiet_end
+    name: Quiet Hours End
+    icon: mdi:sleep-off
+    entity_category: config
+    mode: text
+    max_length: 5
+    pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+    optimistic: yes
+    restore_value: yes
+    initial_value: '07:00'
+
+switch:
+  - platform: template
+    id: quiet_hours
+    name: Quiet Hours
+    icon: mdi:sleep
+    entity_category: config
+    optimistic: yes
+    restore_mode: restore_default_off
+
+binary_sensor:
+  - platform: template
+    id: in_quiet_hours
+    name: In Quiet Hours
+    icon: mdi:sleep
+    lambda: return id(quiet_hours).state && zigbidouille::in_window(id(ha_time).now(), id(quiet_start).state, id(quiet_end).state);
+
+sensor:
+  # One visit = one Pet Inside press/release. Published in this order by record_visit:
+  # the details first, Visit Count last, so a client reacting to Visit Count reads a
+  # consistent visit.
+  - platform: template
+    id: last_visit_weight
+    name: Last Visit Weight
+    icon: mdi:scale-bathroom
+    unit_of_measurement: kg
+    accuracy_decimals: 2
+    device_class: weight
+    update_interval: never
+
+  - platform: template
+    id: last_visit_duration
+    name: Last Visit Duration
+    icon: mdi:timer-outline
+    unit_of_measurement: s
+    accuracy_decimals: 0
+    device_class: duration
+    update_interval: never
+
+  - platform: template
+    id: pet1_last_weight
+    name: Pet 1 Last Weight
+    icon: mdi:scale-bathroom
+    unit_of_measurement: kg
+    accuracy_decimals: 2
+    device_class: weight
+    update_interval: never
+
+  - platform: template
+    id: pet2_last_weight
+    name: Pet 2 Last Weight
+    icon: mdi:scale-bathroom
+    unit_of_measurement: kg
+    accuracy_decimals: 2
+    device_class: weight
+    update_interval: never
+
+  - platform: template
+    id: pet1_visits_today
+    name: Pet 1 Visits Today
+    icon: mdi:counter
+    accuracy_decimals: 0
+    update_interval: 60s
+    lambda: return id(pet1_visits);
+
+  - platform: template
+    id: pet2_visits_today
+    name: Pet 2 Visits Today
+    icon: mdi:counter
+    accuracy_decimals: 0
+    update_interval: 60s
+    lambda: return id(pet2_visits);
+
+  - platform: template
+    id: unknown_visits_today
+    name: Unknown Visits Today
+    icon: mdi:counter
+    accuracy_decimals: 0
+    update_interval: 60s
+    lambda: return id(unknown_visits);
+
+  - platform: template
+    id: visit_count
+    name: Visit Count
+    icon: mdi:counter
+    accuracy_decimals: 0
+    state_class: total_increasing
+    update_interval: 60s
+    lambda: return id(visit_total);
+
+text_sensor:
+  - platform: template
+    id: last_visit_pet
+    name: Last Visit Pet
+    icon: mdi:cat
+    update_interval: never
+
+script:
+  - id: record_visit  # called by Pet Inside's on_release (petkit.yaml)
+    then:
+      - lambda: |-
+          auto &samples = id(visit_samples);
+          // Pet Inside releases 5 s after the weight drops (delayed_off).
+          const uint32_t seconds = (millis() - id(visit_started_at)) / 1000;
+          const uint32_t duration = seconds > 5 ? seconds - 5 : 0;
+          if (samples.size() < 3) {  // a paw on the edge, not a visit
+            samples.clear();
+            return;
+          }
+          const float weight = zigbidouille::median(samples);
+          samples.clear();
+          const int pet = zigbidouille::classify(weight, id(pet1_min).state, id(pet1_max).state,
+                                                 id(pet2_min).state, id(pet2_max).state);
+          id(last_visit_weight).publish_state(weight);
+          id(last_visit_duration).publish_state(duration);
+          if (pet == 1) {
+            id(pet1_visits)++;
+            id(pet1_last_weight).publish_state(weight);
+            id(last_visit_pet).publish_state(id(pet1_name).state);
+          } else if (pet == 2) {
+            id(pet2_visits)++;
+            id(pet2_last_weight).publish_state(weight);
+            id(last_visit_pet).publish_state(id(pet2_name).state);
+          } else {
+            id(unknown_visits)++;
+            id(last_visit_pet).publish_state("Unknown");
+          }
+          ESP_LOGI("zigbidouille", "visit: pet %d, %.2f kg, %u s", pet, weight, (unsigned) duration);
+          id(visit_total)++;
+          id(pet1_visits_today).publish_state(id(pet1_visits));
+          id(pet2_visits_today).publish_state(id(pet2_visits));
+          id(unknown_visits_today).publish_state(id(unknown_visits));
+          id(visit_count).publish_state(id(visit_total));  // last: the signal that a visit was recorded
+
+interval:
+  - interval: 1s  # weight samples while a pet is inside, for record_visit's median
+    then:
+      - lambda: |-
+          if (id(pet_inside).state && id(pet_weight).state >= id(pet_threshold).state && id(visit_samples).size() < 600)
+            id(visit_samples).push_back(id(pet_weight).state);
+
+  - interval: 60s  # per-pet counters are "today", in local time
+    then:
+      - lambda: |-
+          auto now = id(ha_time).now();
+          if (!now.is_valid()) return;
+          if (now.day_of_year != id(visits_day)) {
+            id(visits_day) = now.day_of_year;
+            id(pet1_visits) = 0;
+            id(pet2_visits) = 0;
+            id(unknown_visits) = 0;
+          }

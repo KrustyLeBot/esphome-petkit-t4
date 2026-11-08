@@ -1,4 +1,28 @@
-# Petkit T4 ESPHome Firmware
+# Petkit T4 ESPHome Firmware — Zigbidouille fork
+
+> **This fork** (KrustyLeBot) adds, in [`zigbidouille.yaml`](zigbidouille.yaml) + [`zigbidouille.h`](zigbidouille.h),
+> what a Homey-only, no-Home-Assistant, no-internet setup needs. The rest of this README is upstream's
+> (Triskae / egormanga) and still applies.
+>
+> - **Web API for Homey**: `web_server` v3 with a login (`web_username` / `web_password` in `secrets.yaml`),
+>   page served from the device (`local: true`, works offline). Driven by the `petkit-t4` driver of
+>   [KrustyLeBot/ZigbidouilleHomeyApp](https://github.com/KrustyLeBot/ZigbidouilleHomeyApp), which addresses
+>   entities **by name**: rename one here and the driver breaks.
+> - **Clock from the LAN**: SNTP to `ntp_server` (default `192.168.1.254`, the Freebox) instead of Home Assistant;
+>   `timezone` default `Europe/Paris` (substitutions in `petkit.yaml`).
+> - **Two pets by weight**: `Pet 1/2 Name`, `Pet 1/2 Min/Max Weight`; each visit's median weight picks the pet.
+>   `Last Visit Pet/Weight/Duration`, `Pet 1/2 Visits Today` (reset at local midnight), `Visit Count`.
+> - **Quiet hours** (`Quiet Hours`, `Quiet Hours Start/End`) and **Min Clean Interval**: an automatic cleaning
+>   due inside the window, or too soon after the last one, waits; a manual `Clean` is never held.
+>
+> Not covered (stock features lost by flashing): the **liquid deodorizer spray**.
+>
+> **Before flashing: dump the stock flash** (`esptool.py read_flash 0 0x800000 stock.bin`) and keep it — it is the
+> only way back, and it holds the factory weight calibration (`tools/stock-calibration.html`). The ESP32's UART0
+> (GPIO1/3) is also the link to the motor controller; see [earlynerd's notes](https://github.com/earlynerd/petkit-pura-max-serial-bus)
+> for the board's UART header.
+
+---
 
 **Custom.** Fully replaces the stock firmware of the PetKit PURA MAX (T4) while introducing some extra neat features, as well as native Home Assistant integration.
 
