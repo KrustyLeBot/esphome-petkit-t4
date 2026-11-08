@@ -19,8 +19,9 @@
 >   `HH:MM`), button `Deodorize`; never while a pet is there. Result in `Last Deodorize`, then `Deodorize Count`.
 >   Protocol from [sergey-akhmineev/PetKit-Smart-Spray](https://github.com/sergey-akhmineev/PetKit-Smart-Spray).
 >   It needs the K3's Bluetooth MAC and **secret**, which only the Petkit cloud knows: read them **once, before
->   leaving the cloud** (e.g. with [pypetkitapi](https://github.com/Jezza34000/py-petkit-api): the K3's `mac` and
->   `secret` in its device data) and put them in `secrets.yaml` (`k3_mac`, `k3_secret`).
+>   leaving the cloud** with [`tools/k3_credentials.py`](tools/k3_credentials.py) (setup in its header; uses
+>   [pypetkitapi](https://github.com/Jezza34000/py-petkit-api)), which prints the two `secrets.yaml` lines
+>   (`k3_mac`, `k3_secret`).
 >
 > Not covered: the K3's liquid level and battery (not decoded), and the stock cleaning variants (deep clean,
 > waste saving, waste covering, continuous rotation).
