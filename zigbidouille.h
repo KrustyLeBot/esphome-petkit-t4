@@ -1,6 +1,6 @@
 #pragma once
 
-// Helpers for zigbidouille.yaml (Homey integration, two pets, quiet hours).
+// Helpers for zigbidouille.yaml (Homey integration, two pets, K3 deodorizer).
 // Kept out of the YAML lambdas so they can be read — and changed — in one place.
 
 #include <algorithm>
@@ -19,15 +19,32 @@ inline int parse_hhmm(const std::string &s) {
   return h * 60 + m;
 }
 
-// Is local time `now` inside [start, end)? Windows may cross midnight
-// ("22:00" -> "07:00"). An invalid clock or window means "not inside": quiet
-// hours must never be the reason a litter box stops cleaning for good.
-inline bool in_window(const esphome::ESPTime &now, const std::string &start, const std::string &end) {
+// Is local time `now` (to the minute) one of the "HH:MM,HH:MM,..." times in `list`?
+// Used for the periodic deodorizing schedule. Malformed entries are ignored.
+inline bool time_in_list(const esphome::ESPTime &now, const std::string &list) {
   if (!now.is_valid()) return false;
-  const int s = parse_hhmm(start), e = parse_hhmm(end);
-  if (s < 0 || e < 0 || s == e) return false;
   const int t = now.hour * 60 + now.minute;
-  return s < e ? (t >= s && t < e) : (t >= s || t < e);
+  size_t pos = 0;
+  while (pos <= list.size()) {
+    size_t comma = list.find(',', pos);
+    if (comma == std::string::npos) comma = list.size();
+    std::string item = list.substr(pos, comma - pos);
+    item.erase(0, item.find_first_not_of(' '));
+    if (!item.empty() && parse_hhmm(item) == t) return true;
+    pos = comma + 1;
+  }
+  return false;
+}
+
+// "fafcfd..." -> bytes. Stops at the first non-hex pair.
+inline std::vector<uint8_t> from_hex(const std::string &hex) {
+  std::vector<uint8_t> out;
+  for (size_t i = 0; i + 1 < hex.size(); i += 2) {
+    unsigned v;
+    if (std::sscanf(hex.substr(i, 2).c_str(), "%2x", &v) != 1) break;
+    out.push_back(static_cast<uint8_t>(v));
+  }
+  return out;
 }
 
 // Median of the weight samples taken while a pet was inside: robust against

@@ -12,10 +12,18 @@
 >   `timezone` default `Europe/Paris` (substitutions in `petkit.yaml`).
 > - **Two pets by weight**: `Pet 1/2 Name`, `Pet 1/2 Min/Max Weight`; each visit's median weight picks the pet.
 >   `Last Visit Pet/Weight/Duration`, `Pet 1/2 Visits Today` (reset at local midnight), `Visit Count`.
-> - **Quiet hours** (`Quiet Hours`, `Quiet Hours Start/End`) and **Min Clean Interval**: an automatic cleaning
->   due inside the window, or too soon after the last one, waits; a manual `Clean` is never held.
+> - **Min Clean Interval**: an automatic cleaning due too soon after the last one waits; a manual `Clean` is never held.
+> - **Child Lock**: the box's two buttons do nothing.
+> - **Deodorizer — the PETKIT K3 smart spray** (Bluetooth), as the stock box drives it: `Auto Deodorize` (after
+>   each visit, once the pet is gone), `Intense Deodorize` (two sprays), `Deodorize Times` (up to six local
+>   `HH:MM`), button `Deodorize`; never while a pet is there. Result in `Last Deodorize`, then `Deodorize Count`.
+>   Protocol from [sergey-akhmineev/PetKit-Smart-Spray](https://github.com/sergey-akhmineev/PetKit-Smart-Spray).
+>   It needs the K3's Bluetooth MAC and **secret**, which only the Petkit cloud knows: read them **once, before
+>   leaving the cloud** (e.g. with [pypetkitapi](https://github.com/Jezza34000/py-petkit-api): the K3's `mac` and
+>   `secret` in its device data) and put them in `secrets.yaml` (`k3_mac`, `k3_secret`).
 >
-> Not covered (stock features lost by flashing): the **liquid deodorizer spray**.
+> Not covered: the K3's liquid level and battery (not decoded), and the stock cleaning variants (deep clean,
+> waste saving, waste covering, continuous rotation).
 >
 > **Before flashing: dump the stock flash** (`esptool.py read_flash 0 0x800000 stock.bin`) and keep it — it is the
 > only way back, and it holds the factory weight calibration (`tools/stock-calibration.html`). The ESP32's UART0

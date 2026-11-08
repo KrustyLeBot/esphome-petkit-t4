@@ -14,7 +14,7 @@ esphome:
   includes:
     - zigbidouille.h
 
-packages:  # Homey API, two pets, quiet hours: see the file
+packages:  # Homey API, two pets, K3 deodorizer, child lock: see the file
   zigbidouille: !include zigbidouille.yaml
 
 external_components:
@@ -139,9 +139,12 @@ substitutions:
   # Any move is forbidden during an OTA or with Block Movement on. Read the states directly: the
   # Movement Blocked sensor may not be refreshed yet when Block Movement's own triggers run.
   movement_blocked: 'id(ota_state) || id(block_movement).state'
-  # Zigbidouille: local clock source and zone (quiet hours and "today" counters use local time).
+  # Zigbidouille: local clock source and zone ("today" counters and deodorize times use local time).
   timezone: Europe/Paris
   ntp_server: 192.168.1.254
+  # Zigbidouille: the PETKIT K3 smart spray paired with this box (see README, "Deodorizer").
+  k3_mac: !secret k3_mac
+  k3_secret: !secret k3_secret
 
 qr_code:
   id: qrcode_ap
@@ -937,15 +940,20 @@ binary_sensor:
       inverted: yes
     on_double_click:
       if:
-        condition:
-          switch.is_off: maintenance
+        all:
+          - switch.is_off: maintenance
+          - switch.is_off: child_lock  # zigbidouille.yaml
         then:
           switch.turn_on: maintenance
     on_multi_click:
       timing:
         - ON for at least 2s
       then:
-        button.press: reboot
+        if:
+          condition:
+            switch.is_off: child_lock
+          then:
+            button.press: reboot
 
   - platform: gpio
     name: OK Button
@@ -955,7 +963,11 @@ binary_sensor:
       inverted: yes
       ignore_strapping_warning: yes
     on_click:
-      button.press: level
+      if:
+        condition:
+          switch.is_off: child_lock  # zigbidouille.yaml
+        then:
+          button.press: level
 
   - platform: gpio
     name: MCU
@@ -1563,9 +1575,8 @@ script:
     mode: restart
     then:
       - delay: !lambda return id(clean_after).state*60000;
-      - wait_until:  # zigbidouille.yaml: not during quiet hours, nor sooner than Min Clean Interval after the last cleaning
+      - wait_until:  # zigbidouille.yaml: not sooner than Min Clean Interval after the last cleaning
           lambda: |-
-            if (id(in_quiet_hours).state) return false;
             const uint32_t min_ms = (uint32_t) id(min_clean_interval).state * 60000;
             if (min_ms && id(cleaned_at) && millis() - (uint32_t) id(cleaned_at) < min_ms) return false;
             return true;
