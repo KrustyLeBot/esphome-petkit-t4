@@ -63,7 +63,7 @@ globals:
     type: int
 
 number:
-  # Defaults: Zeus ~4.3 kg, Ares ~5.0 kg, split halfway. Tune from Homey once real weights show up.
+  # Default ranges for two adult cats; tune them from Homey once the box reports real weights.
   - platform: template
     id: pet1_min
     name: Pet 1 Min Weight
@@ -144,7 +144,7 @@ text:
     max_length: 16
     optimistic: yes
     restore_value: yes
-    initial_value: Zeus
+    initial_value: Cat 1
 
   - platform: template
     id: pet2_name
@@ -155,7 +155,7 @@ text:
     max_length: 16
     optimistic: yes
     restore_value: yes
-    initial_value: Ares
+    initial_value: Cat 2
 
   - platform: template
     id: deodorize_times
